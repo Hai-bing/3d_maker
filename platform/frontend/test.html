@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI 文生图 / 3D 模型平台</title>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <style>
+    :root { color-scheme: dark; --panel: rgba(17,24,39,.82); --accent:#ff8a00; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; font:16px/1.5 system-ui,sans-serif; color:#fff; background:linear-gradient(135deg,#111827,#7f1d1d,#172554); padding:24px; }
+    .container { max-width:1400px; margin:auto; padding:28px; border-radius:20px; background:rgba(255,255,255,.09); backdrop-filter:blur(12px); }
+    header { text-align:center; margin-bottom:24px; } h1 { margin:0 0 8px; font-size:clamp(2rem,4vw,3rem); } .subtitle { opacity:.8; }
+    .input-section,.section,.instructions { background:var(--panel); border-radius:14px; padding:22px; box-shadow:0 8px 24px #0004; }
+    .input-section { margin-bottom:24px; } .input-group { display:flex; gap:12px; flex-wrap:wrap; }
+    input { flex:1; min-width:240px; border:1px solid #ffffff33; border-radius:999px; padding:14px 18px; color:#fff; background:#ffffff18; font-size:1rem; }
+    button { border:0; border-radius:999px; padding:13px 22px; color:#fff; font-weight:700; cursor:pointer; background:linear-gradient(45deg,#ff8a00,#da1b60); }
+    button.secondary { background:linear-gradient(45deg,#00c6ff,#0072ff); } button:disabled { opacity:.55; cursor:wait; }
+    .status-bar { margin-top:14px; padding:10px 12px; border-radius:8px; background:#ffffff12; text-align:center; }
+    .output-sections { display:grid; grid-template-columns:1fr 1fr; gap:24px; } .section-title { margin:0 0 16px; color:#ffb15c; }
+    .image-display,.model-display { position:relative; min-height:320px; border-radius:10px; overflow:hidden; background:#0004; }
+    .image-display { display:flex; align-items:center; justify-content:center; } .image-display img { max-width:100%; max-height:100%; object-fit:contain; }
+    #model-canvas { display:block; width:100%; height:420px; } .hidden { display:none !important; }
+    .loading { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; background:#000b; z-index:2; }
+    .spinner { width:42px; height:42px; border:4px solid #ffffff44; border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
+    .instructions { margin-top:24px; } .instructions li { margin:8px 0; } .download { display:inline-block; margin-top:14px; color:#9bd4ff; }
+    @media (max-width:900px) { .output-sections { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <header><h1>AI 文生图 / 3D 模型平台</h1><div class="subtitle">输入描述，先生成图片，再由本地 Hunyuan3D 2.0 生成可交互的 3D 模型</div></header>
+    <section class="input-section">
+      <div class="input-group"><input id="description-input" maxlength="500" placeholder="例如：一只红色陶瓷花瓶，带金色花纹"><button id="generate-btn">生成图片</button></div>
+      <button id="generate-3d-btn" class="secondary hidden">基于图片生成 3D 模型</button>
+      <div id="status-bar" class="status-bar">就绪</div>
+    </section>
+    <div class="output-sections">
+      <section class="section"><h2 class="section-title">生成的图片</h2><div class="image-display"><div id="image-loading" class="loading hidden"><div class="spinner"></div><span>正在生成图片…</span></div><img id="generated-image" class="hidden" alt="生成的图片"></div></section>
+      <section class="section"><h2 class="section-title">3D 模型展示</h2><div class="model-display"><canvas id="model-canvas"></canvas><div id="model-loading" class="loading hidden"><div class="spinner"></div><span>正在生成或加载模型…</span></div></div><a id="download-model" class="download hidden" target="_blank" rel="noopener">下载模型文件</a></section>
+    </div>
+    <section class="instructions"><h3>使用说明</h3><ol><li>输入物体描述并点击“生成图片”。</li><li>图片生成完成后，点击“基于图片生成 3D 模型”。</li><li>在 3D 区域拖拽旋转、滚轮缩放，也可以下载模型文件。</li></ol></section>
+  </main>
+  <script>
+    const API_BASE = '';
+    let generatedImageUrl = '', userPrompt = '', currentModel;
+    let scene, camera, renderer, controls;
+    const $ = id => document.getElementById(id);
+    const setStatus = text => $('status-bar').textContent = text;
+    const setLoading = (id, value) => $(id).classList.toggle('hidden', !value);
+
+    function initScene() {
+      const canvas = $('model-canvas');
+      scene = new THREE.Scene(); scene.background = new THREE.Color(0x111827);
+      camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, .01, 1000); camera.position.set(0, 0, 4);
+      renderer = new THREE.WebGLRenderer({ canvas, antialias:true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 1.2)); const light = new THREE.DirectionalLight(0xffffff, 1.2); light.position.set(4,6,5); scene.add(light);
+      controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
+      const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2, 1), new THREE.MeshStandardMaterial({color:0x4caf50, metalness:.5, roughness:.3})); scene.add(mesh); currentModel = mesh;
+      (function animate(){ requestAnimationFrame(animate); controls.update(); if (currentModel === mesh) mesh.rotation.y += .005; renderer.render(scene,camera); })();
+    }
+    function disposeObject(obj) { obj.traverse?.(node => { if (node.isMesh) { node.geometry?.dispose(); const mats = Array.isArray(node.material) ? node.material : [node.material]; mats.forEach(m => { m?.map?.dispose(); m?.dispose(); }); } }); }
+    function loadModel(url) {
+      const isObj = /\.obj(?:\?|$)/i.test(url); const loader = isObj ? new THREE.OBJLoader() : new THREE.GLTFLoader(); loader.load(url, loaded => { if (currentModel) { scene.remove(currentModel); disposeObject(currentModel); } currentModel = isObj ? loaded : loaded.scene;
+        const box = new THREE.Box3().setFromObject(currentModel), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3()); const max = Math.max(size.x,size.y,size.z) || 1;
+        currentModel.position.sub(center); currentModel.scale.setScalar(2.4 / max); scene.add(currentModel); $('download-model').href = url; $('download-model').classList.remove('hidden'); setLoading('model-loading', false); setStatus('3D 模型生成并加载完成');
+      }, undefined, err => { setLoading('model-loading', false); setStatus(`模型加载失败：${err.message || err}`); });
+    }
+    async function generateImage() {
+      const prompt = $('description-input').value.trim(); if (!prompt) return setStatus('请输入物体描述'); userPrompt = prompt; $('generate-btn').disabled = true; setLoading('image-loading', true); setStatus('正在生成图片…');
+      try { const res = await fetch(`${API_BASE}/api/generate-image`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})}); const data = await res.json(); if (!res.ok) throw new Error(data.error || '请求失败'); generatedImageUrl = data.url; const img = $('generated-image'); img.onload = () => { img.classList.remove('hidden'); setLoading('image-loading', false); $('generate-3d-btn').classList.remove('hidden'); setStatus('图片生成完成，可以继续生成 3D 模型'); }; img.onerror = () => { setLoading('image-loading', false); setStatus('图片地址无法加载'); }; img.src = generatedImageUrl; } catch (e) { setLoading('image-loading', false); setStatus(`图片生成失败：${e.message}`); } finally { $('generate-btn').disabled = false; }
+    }
+    async function generate3D() {
+      if (!generatedImageUrl) return setStatus('请先生成图片'); $('generate-3d-btn').disabled = true; setLoading('model-loading', true); setStatus('正在本地生成 3D 模型…');
+      try { const res = await fetch(`${API_BASE}/api/generate-3d`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:userPrompt,image_url:generatedImageUrl})}); const data = await res.json(); if (!res.ok) throw new Error(data.error || '请求失败'); loadModel(data.model_url); } catch (e) { setLoading('model-loading', false); setStatus(`3D 生成失败：${e.message}`); } finally { $('generate-3d-btn').disabled = false; }
+    }
+    $('generate-btn').addEventListener('click', generateImage); $('generate-3d-btn').addEventListener('click', generate3D); $('description-input').addEventListener('keydown', e => { if (e.key === 'Enter') generateImage(); });
+    addEventListener('resize', () => { if (!renderer) return; const c=$('model-canvas'); camera.aspect=c.clientWidth/c.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(c.clientWidth,c.clientHeight,false); });
+    addEventListener('load', initScene);
+  </script>
+</body>
+</html>

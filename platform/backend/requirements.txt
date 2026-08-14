@@ -1,0 +1,15 @@
+Flask>=3.0,<4
+flask-cors>=4.0,<7
+python-dotenv>=1.0,<2
+httpx>=0.27,<1
+torch>=2.0
+torchvision
+omegaconf==2.3.0
+einops==0.7.0
+transformers==4.35.0
+trimesh==4.0.5
+rembg
+huggingface-hub
+xatlas==0.0.9
+onnxruntime
+deep-translator

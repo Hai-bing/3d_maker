@@ -1,0 +1,299 @@
+# 3D Maker 本次对话改动日志
+
+更新时间：2026-08-06（当日多次追加）
+
+本文记录本次对话中对工程进行的分析、修复、配置调整和方案变更。API Key 等敏感信息不写入日志。
+
+## 1. 初始工程分析
+
+- 梳理了 `platform/backend`、`platform/frontend` 和 Python 虚拟环境目录。
+- 确认工程目标是“文字生成 2D 图片，再由图片生成 3D 模型”。
+- 发现原后端图片接口使用 Ark Seedream，3D 接口使用了占位模型名和错误的 `chat.completions` 调用方式。
+- 发现 `test2.py` 才包含较正确的 Seed3D 异步任务创建、轮询和 `file_url` 提取逻辑。
+- 发现原前端存在中文乱码、重复 `class` 属性、固定 `localhost:5000` 地址和模型资源释放不完整等问题。
+- 发现原 `seed3D_env` 指向不存在的 Python 路径，无法直接复用。
+
+## 2. 后端修复
+
+文件：`platform/backend/app.py`
+
+- 使用脚本所在目录加载 `.env`，避免依赖当前启动目录。
+- 增加 API Key 模板值检查，拒绝使用 `your_ark_api_key`、`your-api-key`、`changeme` 等占位值。
+- 增加 `GET /api/health` 健康检查接口。
+- 增加根路径 `/`，由 Flask 返回前端页面。
+- 将 Seed3D 调用改为 Ark SDK 的异步任务接口：
+  - `content_generation.tasks.create`
+  - `content_generation.tasks.get`
+  - 任务状态轮询
+  - 成功后提取 `content.file_url`
+- 更新 3D 模型默认值为：
+
+  ```text
+  doubao-seed3d-2-0-260328
+  ```
+
+- 将 3D 输出格式调整为 OBJ，并使用高细分参数：
+
+  ```text
+  --subdivisionlevel high --fileformat obj
+  ```
+
+- 增加 3D 任务超时、轮询间隔和错误响应。
+- 增加本机图片地址校验：如果图片 URL 是 `localhost`、`127.0.0.1` 或 `0.0.0.0`，会提示 Ark 无法访问，需要配置公网地址。
+
+## 3. 图片生成方案变更：ComfyUI + SDXL
+
+根据后续需求，图片生成从 Ark Seedream 改为本地免费开源方案：
+
+```text
+Flask → ComfyUI → SDXL → 保存本地 PNG → Seed3D
+```
+
+文件：`platform/backend/app.py`
+
+- 移除后端图片生成对 Ark `images.generate` 的依赖。
+- 增加标准 ComfyUI SDXL 文生图工作流：
+  - `CheckpointLoaderSimple`
+  - 正向 `CLIPTextEncode`
+  - 负向 `CLIPTextEncode`
+  - `EmptyLatentImage`
+  - `KSampler`
+  - `VAEDecode`
+  - `SaveImage`
+- 后端通过以下 ComfyUI API 完成任务：
+  - `POST /prompt`
+  - `GET /history/{prompt_id}`
+  - `GET /view`
+- 图片生成后保存到：
+
+  ```text
+  platform/backend/static/generated/
+  ```
+
+- 自动添加适合后续图生 3D 的提示词约束：单一物体、完整轮廓、三分之四视角、纯色背景、无文字、无人物、无遮挡。
+- `/api/health` 增加 ComfyUI 地址和可用状态字段。
+
+## 4. 前端修复
+
+文件：`platform/frontend/test.html`
+
+- 重写为 UTF-8 中文页面，修复原有中文乱码。
+- 修复重复 `class` 属性造成的隐藏状态问题。
+- API 请求改为相对路径，不再写死 `http://localhost:5000`。
+- 增加图片和 3D 模型生成中的加载状态。
+- 增加错误提示和图片加载失败处理。
+- 增加 3D 模型下载链接。
+- 增加模型包围盒自动居中和缩放。
+- 完善 GLTF/OBJ 模型资源释放。
+- 引入 `OBJLoader`，支持当前 Seed3D 返回的 OBJ 文件。
+- 保留 Three.js 鼠标旋转、缩放和拖拽交互。
+
+## 5. 配置和依赖
+
+新增或更新文件：
+
+- `platform/backend/.env.example`
+- `platform/backend/requirements.txt`
+- `README.md`
+
+新增配置：
+
+```env
+COMFYUI_URL=http://127.0.0.1:8188
+COMFYUI_CHECKPOINT=sd_xl_base_1.0.safetensors
+COMFYUI_TIMEOUT=600
+COMFYUI_WIDTH=1024
+COMFYUI_HEIGHT=1024
+PUBLIC_BASE_URL=https://your-public-domain.example.com
+```
+
+新增 Python 依赖：
+
+```text
+httpx
+```
+
+README 已更新为 ComfyUI + SDXL 的安装、配置、启动和公网图片地址说明。
+
+## 6. 测试脚本修复
+
+文件：`platform/backend/test.py`、`platform/backend/test2.py`
+
+- 更新示例中的 Seed3D 模型为 `doubao-seed3d-2-0-260328`。
+- 修复 `test.py` 查询任务时错误使用字符串 `"create_result"` 的问题，改为使用真实任务 ID。
+
+## 7. 安全处理
+
+- 对话中曾出现完整 API Key 示例。该 Key 已视为泄露，不应继续使用。
+- 工程日志不记录任何 API Key。
+- API Key 只应保存在 `platform/backend/.env`，不得写入前端或提交到版本库。
+- 建议在火山方舟控制台删除已暴露 Key，并创建新 Key。
+
+## 8. 已完成的验证
+
+- Python 后端源码编译检查通过。
+- 前端 JavaScript 语法检查通过。
+- 浏览器本地加载前端页面成功。
+- 页面中文显示正常。
+- Three.js 初始化无控制台错误。
+- 已检查旧的占位 Seed3D 模型和错误 `chat.completions` 调用不再存在于主后端代码中。
+
+## 9. 当前运行链路
+
+```text
+用户文字
+  ↓
+Flask /api/generate-image
+  ↓
+ComfyUI + SDXL
+  ↓
+本地 PNG 图片
+  ↓
+Flask /api/generate-3d
+  ↓
+Ark doubao-seed3d-2-0-260328
+  ↓
+OBJ 文件
+  ↓
+Three.js OBJLoader
+```
+
+## 10. 当前仍需手动完成的事项
+
+1. 安装并启动 ComfyUI。
+2. 将 SDXL Base 权重放入 `ComfyUI/models/checkpoints`。
+3. 在 `platform/backend/.env` 填写有效的 Ark API Key。
+4. 如果要调用 Ark Seed3D，配置公网可访问的 `PUBLIC_BASE_URL`；不能使用 `localhost`。
+5. 重新创建已经失效的 Python 虚拟环境并安装 `requirements.txt`。
+
+## 11. TripoSR 状态
+
+- ~~本次对话中讨论过 TripoSR，但没有将其接入工程。当前 3D 生成模型仍然是 Ark Seed3D，不是 TripoSR。~~（已废弃，见下方）
+
+## 12. 2026-08-06：2D→3D 管线从 Ark Seed3D 切换为本地 TripoSR
+
+- 从 `C:\Users\Haibing\3D\TripoSR\tsr\` 复制 TripoSR 核心模块到 `platform/backend/tsr/`。
+- 重建 Python 虚拟环境，使用 Python 3.10 + CUDA PyTorch。
+- 移除后端所有 Ark SDK 代码（`volcenginesdkarkruntime`、Seed3D API 密钥、任务轮询等）。
+- 重写 `/api/generate-3d`：
+  - 从本地路径读取 2D 图片
+  - rembg 去背景 + resize_foreground 预处理
+  - TripoSR 本地推理 → scene_codes
+  - Marching Cubes 提取 mesh → 导出 OBJ 到 `static/generated/`
+  - 返回本地 OBJ URL
+- TripoSR 模型在首次请求时懒加载，常驻内存。
+- `/api/health` 增加 `3d_backend=triposr` 和 `triposr_device` 字段。
+- 移除 `PUBLIC_BASE_URL` 配置（不再需要公网地址供 Ark 访问本地图片）。
+- 移除 `ARK_API_KEY` 等 Ark 相关配置。
+- 删除 `test2.py`（纯 Ark SDK 测试脚本）。
+- 更新 `requirements.txt`：移除 `volcengine-python-sdk[ark]`，新增 `torch`、`torchvision`、`rembg`、`trimesh`、`omegaconf`、`einops`、`transformers`、`huggingface-hub`、`xatlas`、`torchmcubes`。
+- 更新前端 `test.html`：文案更新为"本地 TripoSR"。
+- 更新 `README.md`：移除 Ark/公网地址相关内容，新增 TripoSR 说明。
+
+## 13. 当前运行链路（更新）
+
+```text
+用户文字
+  ↓
+Flask /api/generate-image
+  ↓
+ComfyUI + SDXL
+  ↓
+本地 PNG 图片
+  ↓
+Flask /api/generate-3d
+  ↓
+本地 TripoSR（stabilityai/TripoSR）
+  ↓
+OBJ 文件
+  ↓
+Three.js OBJLoader
+```
+
+## 14. 2026-08-06：ComfyUI 安装与环境配置
+
+- ComfyUI 未预先安装，从 GitHub 克隆到 `C:\Users\Haibing\ComfyUI`。
+- SDXL 模型从 HuggingFace 直连超时，改用国内镜像 `hf-mirror.com` 成功下载 6.5GB 权重到 `ComfyUI/models/checkpoints/sd_xl_base_1.0.safetensors`。
+- 安装 ComfyUI `requirements.txt` 依赖时，自动安装了 `torchaudio 2.11.0` 与系统已有的 `torch 2.5.1+cu121` 不兼容，触发 `WinError 127` DLL 入口点错误。
+  - 解决：卸载 `torchaudio 2.11.0`，从 PyTorch CUDA 12.1 索引安装匹配的 `torchaudio 2.5.1+cu121`。
+- 系统中 `generative-models-0.1.0`（`C:\Users\Haibing\Downloads`）是 Stability AI 官方的 SDXL 训练/推理源码，不是 ComfyUI，不能直接使用。
+- 清理旧的 Ark SDK 测试脚本：删除 `platform/backend/test.py`、`platform/backend/test2.py`。
+- `requirements.txt` 移除 `git+https://github.com/tatsy/torchmcubes.git`（工程实际未使用），新增 `onnxruntime`（rembg 依赖）。
+
+## 15. 2026-08-06：SDXL 提示词修复
+
+文件：`platform/backend/app.py` — `_comfy_workflow()`
+
+问题：用户输入"椅子"生成了茶壶。原因是用户描述被拼接在长前缀末尾，SDXL 注意力被前缀稀释。
+
+修复：
+- 将用户描述移到 prompt 最前面，使用 `f"a {prompt}, ..."` 格式。
+- 前缀改为风格/质量修饰语放在后面。
+- CFG（分类器引导强度）从 `6.0` 提升到 `7.5`，让模型更严格遵循文本描述。
+- 负向提示词增加 `cluttered background`。
+
+改动前：
+```python
+positive = "single object, centered, ... no occlusion, " + prompt
+cfg = 6.0
+```
+
+改动后：
+```python
+positive = f"a {prompt}, single object centered ... no occlusion"
+cfg = 7.5
+```
+
+## 16. 2026-08-07：3D 管线从 TripoSR 切换为 Hunyuan3D 2.0
+
+- 从 GitHub 克隆 Hunyuan3D-2 到 `C:\Users\Haibing\Hunyuan3D-2`。
+- 在系统 Python 3.10 中安装 `hy3dgen`（editable install），包含 `Hunyuan3DDiTFlowMatchingPipeline`（形状生成）和 `Hunyuan3DPaintPipeline`（纹理生成）。
+  - 修复 opencv-python-headless 与 opencv-python 冲突（卸载 headless 后重装）。
+- 创建 `platform/backend/hunyuan3d_gen.py`——独立 Hunyuan3D 推理脚本，通过子进程调用避免依赖冲突。
+  - 使用 `tencent/Hunyuan3D-2mini`（0.6B 参数，适合 8GB 显存）。
+  - 默认 30 步推理，octree_resolution=256，可选 `--tex` 纹理生成。
+  - 输出 GLB 文件（带纹理）或 OBJ（fallback）。
+  - 修复图片模式判断 bug（RGBA→RGB→rembg）。
+- 移除 `platform/backend/app.py` 中所有 TripoSR 代码：
+  - 移除 TripoSR 导入（`tsr.system`、`tsr.utils`、`rembg`、`torch`、`numpy`、`PIL`）。
+  - 移除 TripoSR 配置（`TRIPOSR_MODEL_PATH` 等 5 项）。
+  - 移除 TripoSR 模型懒加载（`_get_triposr_model`、`_get_rembg_session`）。
+  - 移除 `_preprocess_for_3d()` 图片预处理函数。
+  - 新增 Hunyuan3D 配置：`HUNYUAN3D_PYTHON`、`HUNYUAN3D_MODEL`、`HUNYUAN3D_STEPS`、`HUNYUAN3D_TEX`、`HUNYUAN3D_OCTREE_RES`、`HUNYUAN3D_TIMEOUT`。
+  - 重写 `/api/generate-3d`：通过 `subprocess.run` 调用 `hunyuan3d_gen.py`，捕获 stdout 获取输出路径，超时控制。
+  - `/api/health` 更新：`3d_backend: hunyuan3d`（原 `triposr`），新增 `hunyuan3d_model` 字段。
+- 更新 `platform/backend/.env`：移除 Ark/TripoSR 旧配置，写入 Hunyuan3D 配置（指定系统 Python 3.10 路径）。
+- 更新 `platform/backend/.env.example`：替换为 Hunyuan3D 配置项及中文注释。
+- 更新 `platform/frontend/test.html`：副标题 "本地 TripoSR" → "本地 Hunyuan3D 2.0"。
+- 前端无需改加载器：已支持 GLB（GLTFLoader）和 OBJ（OBJLoader）自动切换。
+
+## 17. 当前运行链路（更新）
+
+```text
+用户文字
+  ↓
+Flask /api/generate-image
+  ↓
+ComfyUI + SDXL
+  ↓
+本地 PNG 图片
+  ↓
+Flask /api/generate-3d → 子进程调用 hunyuan3d_gen.py
+  ↓
+Hunyuan3D 2.0（tencent/Hunyuan3D-2mini）
+  ├── ShapeGen: Hunyuan3DDiTFlowMatchingPipeline
+  └── TexGen:  Hunyuan3DPaintPipeline（可选）
+  ↓
+GLB 文件
+  ↓
+Three.js GLTFLoader
+```
+
+## 18. 两个 Python 环境说明
+
+| 环境 | 用途 | 关键依赖 |
+|------|------|----------|
+| `d:/3d_maker/platform/seed3D_env/` (venv, Python 3.10) | Flask 后端 | Flask, httpx, deep-translator |
+| `C:/Users/Haibing/.../Python310/` (系统 Python 3.10) | Hunyuan3D 推理 | hy3dgen, torch, diffusers |
+
+Flask 通过 `subprocess.run` 调用系统 Python 执行 `hunyuan3d_gen.py`，两个环境完全隔离，避免依赖冲突。
