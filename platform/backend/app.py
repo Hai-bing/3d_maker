@@ -230,6 +230,17 @@ def generate_3d():
         if HUNYUAN3D_TEX:
             cmd.append("--tex")
 
+        # 释放 ComfyUI 显存，为 Hunyuan3D 腾出空间（8GB 卡同时跑两个模型会 OOM）
+        try:
+            free_resp = httpx.post(
+                f"{COMFYUI_URL}/free",
+                json={"unload_models": True, "free_memory": True},
+                timeout=10,
+            )
+            logging.info("ComfyUI 显存已释放: HTTP %s", free_resp.status_code)
+        except Exception as exc:
+            logging.warning("释放 ComfyUI 显存失败（忽略）: %s", exc)
+
         logging.info("Running Hunyuan3D: %s", " ".join(cmd))
         result = subprocess.run(
             cmd,
