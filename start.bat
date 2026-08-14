@@ -16,6 +16,12 @@ echo.
 
 :: ── 1. ComfyUI ──────────────────────────────
 echo [1/2] 启动 ComfyUI (端口 8188)...
+if not exist "%COMFYUI_DIR%\main.py" (
+    echo    [错误] 找不到 ComfyUI：%COMFYUI_DIR%
+    echo    请设置环境变量 COMFYUI_DIR 为 ComfyUI 安装目录，或修改本脚本第 8 行默认路径。
+    echo    跳过 ComfyUI，继续启动 Flask ...
+    goto flask_start
+)
 start "ComfyUI-SDXL" /D "%COMFYUI_DIR%" /MIN cmd /c "python main.py --port 8188"
 
 :: 等待 ComfyUI 就绪
@@ -27,6 +33,7 @@ if errorlevel 1 goto wait_comfy
 echo    ComfyUI 已就绪 ✓
 
 :: ── 2. Flask ────────────────────────────────
+:flask_start
 echo [2/2] 启动 Flask 后端 (端口 5000)...
 start "3D-Maker-Flask" /D "%PROJECT_DIR%platform" /MIN cmd /c "seed3D_env\Scripts\python.exe backend\app.py"
 
