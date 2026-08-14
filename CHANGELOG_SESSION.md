@@ -172,7 +172,7 @@ Three.js OBJLoader
 
 ## 12. 2026-08-06：2D→3D 管线从 Ark Seed3D 切换为本地 TripoSR
 
-- 从 `C:\Users\Haibing\3D\TripoSR\tsr\` 复制 TripoSR 核心模块到 `platform/backend/tsr/`。
+- 从 `~/3D/TripoSR/tsr/` 复制 TripoSR 核心模块到 `platform/backend/tsr/`。
 - 重建 Python 虚拟环境，使用 Python 3.10 + CUDA PyTorch。
 - 移除后端所有 Ark SDK 代码（`volcenginesdkarkruntime`、Seed3D API 密钥、任务轮询等）。
 - 重写 `/api/generate-3d`：
@@ -212,11 +212,11 @@ Three.js OBJLoader
 
 ## 14. 2026-08-06：ComfyUI 安装与环境配置
 
-- ComfyUI 未预先安装，从 GitHub 克隆到 `C:\Users\Haibing\ComfyUI`。
+- ComfyUI 未预先安装，从 GitHub 克隆到 `~/ComfyUI`。
 - SDXL 模型从 HuggingFace 直连超时，改用国内镜像 `hf-mirror.com` 成功下载 6.5GB 权重到 `ComfyUI/models/checkpoints/sd_xl_base_1.0.safetensors`。
 - 安装 ComfyUI `requirements.txt` 依赖时，自动安装了 `torchaudio 2.11.0` 与系统已有的 `torch 2.5.1+cu121` 不兼容，触发 `WinError 127` DLL 入口点错误。
   - 解决：卸载 `torchaudio 2.11.0`，从 PyTorch CUDA 12.1 索引安装匹配的 `torchaudio 2.5.1+cu121`。
-- 系统中 `generative-models-0.1.0`（`C:\Users\Haibing\Downloads`）是 Stability AI 官方的 SDXL 训练/推理源码，不是 ComfyUI，不能直接使用。
+- 系统中 `generative-models-0.1.0`（`~/Downloads`）是 Stability AI 官方的 SDXL 训练/推理源码，不是 ComfyUI，不能直接使用。
 - 清理旧的 Ark SDK 测试脚本：删除 `platform/backend/test.py`、`platform/backend/test2.py`。
 - `requirements.txt` 移除 `git+https://github.com/tatsy/torchmcubes.git`（工程实际未使用），新增 `onnxruntime`（rembg 依赖）。
 
@@ -246,7 +246,7 @@ cfg = 7.5
 
 ## 16. 2026-08-07：3D 管线从 TripoSR 切换为 Hunyuan3D 2.0
 
-- 从 GitHub 克隆 Hunyuan3D-2 到 `C:\Users\Haibing\Hunyuan3D-2`。
+- 从 GitHub 克隆 Hunyuan3D-2 到 `~/Hunyuan3D-2`。
 - 在系统 Python 3.10 中安装 `hy3dgen`（editable install），包含 `Hunyuan3DDiTFlowMatchingPipeline`（形状生成）和 `Hunyuan3DPaintPipeline`（纹理生成）。
   - 修复 opencv-python-headless 与 opencv-python 冲突（卸载 headless 后重装）。
 - 创建 `platform/backend/hunyuan3d_gen.py`——独立 Hunyuan3D 推理脚本，通过子进程调用避免依赖冲突。
@@ -293,7 +293,7 @@ Three.js GLTFLoader
 
 | 环境 | 用途 | 关键依赖 |
 |------|------|----------|
-| `d:/3d_maker/platform/seed3D_env/` (venv, Python 3.10) | Flask 后端 | Flask, httpx, deep-translator |
-| `C:/Users/Haibing/.../Python310/` (系统 Python 3.10) | Hunyuan3D 推理 | hy3dgen, torch, diffusers |
+| `platform/seed3D_env/` (venv, Python 3.10) | Flask 后端 | Flask, httpx, deep-translator |
+| `~/.../Python310/` (系统 Python 3.10) | Hunyuan3D 推理 | hy3dgen, torch, diffusers |
 
 Flask 通过 `subprocess.run` 调用系统 Python 执行 `hunyuan3d_gen.py`，两个环境完全隔离，避免依赖冲突。

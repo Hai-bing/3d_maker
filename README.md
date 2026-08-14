@@ -40,7 +40,7 @@ TripoSR 模型首次运行时会自动从 HuggingFace 下载权重（`stabilitya
 ## 3. 安装 Python 依赖并启动
 
 ```powershell
-cd D:\3d_maker\platform
+cd platform
 py -3.10 -m venv seed3D_env
 seed3D_env\Scripts\python.exe -m pip install -r backend\requirements.txt
 cd backend
