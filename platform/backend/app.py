@@ -283,9 +283,13 @@ def generate_3d():
             actual_path = dest
 
         model_url = f"/static/generated/{actual_path.name}"
+        # 3D 生成脚本会同时输出同名 .stl（纯几何，供 3D 打印）
+        stl_path = actual_path.with_suffix('.stl')
+        stl_url = f"/static/generated/{stl_path.name}" if stl_path.is_file() else None
         return jsonify({
             "success": True,
             "model_url": model_url,
+            "stl_url": stl_url,
         })
     except subprocess.TimeoutExpired:
         app.logger.exception("Hunyuan3D generation timed out")

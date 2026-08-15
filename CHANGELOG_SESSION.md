@@ -324,3 +324,15 @@ Flask 通过 `subprocess.run` 调用系统 Python 执行 `hunyuan3d_gen.py`，�
 ### 19.5 磁盘清理
 - 删除误下载的 Hunyuan3D 半成品缓存（约 6GB）。
 - 删除已废弃的 TripoSR 模型缓存（约 1.6GB，管线已切换 Hunyuan3D）。
+
+## 20. 2026-08-15：双输入框语义优化与 3D 输出转 STL
+
+### 20.1 功能：输入拆分为主体 + 形容词双输入框
+- 前端输入从单个描述框拆为「主体（物体）」+「形容词（修饰）」两框（涉及文件：`platform/frontend/test.html`）。
+- 后端 `_comfy_workflow()` 按不同 CLIP 权重拼入正向 prompt：主体 `1.4`、形容词 `1.1`，先锁定「物体是什么」再叠加「长什么样」，减少整句打包导致的语义误判（涉及文件：`platform/backend/app.py`）。
+- `/api/generate-image` 请求体改为 `{subject, adjective}`，并兼容旧版单 `prompt` 调用方式。
+
+### 20.2 功能：3D 输出自动转 STL 并支持下载
+- `hunyuan3d_gen.py` 在导出 GLB 后，用同一 trimesh mesh 追加导出同名 `.stl`（纯几何，不含纹理，供 3D 打印/切割）。
+- `app.py` 的 `/api/generate-3d` 检测同名 `.stl` 是否存在，返回值新增 `stl_url`。
+- 前端 3D 展示区新增「下载 STL 文件」链接（带 `download` 属性，点击直接保存到本地）。

@@ -85,6 +85,10 @@ def main():
     # Trimesh 5.x compatibility: export as GLB
     if hasattr(mesh, 'export'):
         mesh.export(str(output_path))
+        # 同时导出 STL（纯几何，不含纹理，供 3D 打印/切割使用）
+        stl_path = output_path.with_suffix('.stl')
+        mesh.export(str(stl_path))
+        print(f"[hunyuan3d] exported STL to {stl_path}", file=sys.stderr)
     else:
         # fallback: write OBJ
         obj_path = str(output_path).replace('.glb', '.obj')
