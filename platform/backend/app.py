@@ -82,14 +82,22 @@ def _translate_to_english(text: str) -> str:
 
 # ── ComfyUI 工作流 ──────────────────────────────────────────
 
-def _comfy_workflow(prompt: str, seed: int) -> dict[str, dict[str, Any]]:
-    """SDXL txt2img workflow — CLIP-weighted subject emphasis for accurate object generation."""
-    english_prompt = _translate_to_english(prompt)
+def _comfy_workflow(subject: str, adjective: str, seed: int) -> dict[str, dict[str, Any]]:
+    """SDXL txt2img workflow — 主体高权重 (1.4)、形容词低权重 (1.1)，减少语义误判。
 
-    # CLIP 权重强调主语 (1.3x)，不放否定语在正向 prompt 中
-    # 去掉 "studio product photography" — 对小物件有偏见，大型/复杂物体生成不准
+    主体与修饰分开喂给 CLIP，模型先锁定「物体是什么」，再叠加「长什么样」，
+    避免一整句话被整体打包导致主体不突出或形容词被误读为额外物体。
+    """
+    subject_en = _translate_to_english(subject)
+    subject_part = f"({subject_en}:1.4)"
+
+    adjective_en = _translate_to_english(adjective).strip() if adjective else ""
+    adjective_part = f", ({adjective_en}:1.1)" if adjective_en else ""
+
+    # 不放否定语在正向 prompt 中；去掉 "studio product photography"
+    # — 对小物件有偏见，大型/复杂物体生成不准
     positive = (
-        f"({english_prompt}:1.3), "
+        subject_part + adjective_part + ", "
         "professional photograph, centered, full view, "
         "clean background, high detail, "
         f"uid:{seed}"   # 防止 ComfyUI 缓存复用（每次 seed 不同，hash 不同）
@@ -157,13 +165,18 @@ def health():
 
 @app.post("/api/generate-image")
 def generate_image():
-    prompt = str(_json_body().get("prompt", "")).strip()
-    if not prompt:
-        return _error("请输入生成描述")
+    data = _json_body()
+    subject = str(data.get("subject", "")).strip()
+    adjective = str(data.get("adjective", "")).strip()
+    # 兼容旧版单输入框：只传 prompt 时，整个描述当作主体
+    if not subject:
+        subject = str(data.get("prompt", "")).strip()
+    if not subject:
+        return _error("请输入主体（物体）描述")
     try:
         client_id = str(uuid.uuid4())
         payload = {
-            "prompt": _comfy_workflow(prompt, int(time.time() * 1000) % 2**32),
+            "prompt": _comfy_workflow(subject, adjective, int(time.time() * 1000) % 2**32),
             "client_id": client_id,
         }
         with httpx.Client(timeout=30) as client:

@@ -34,7 +34,7 @@
   <main class="container">
     <header><h1>AI 文生图 / 3D 模型平台</h1><div class="subtitle">输入描述，先生成图片，再由本地 Hunyuan3D 2.0 生成可交互的 3D 模型</div></header>
     <section class="input-section">
-      <div class="input-group"><input id="description-input" maxlength="500" placeholder="例如：一只红色陶瓷花瓶，带金色花纹"><button id="generate-btn">生成图片</button></div>
+      <div class="input-group"><input id="subject-input" maxlength="200" placeholder="主体（物体）：例如 花瓶"><input id="adjective-input" maxlength="300" placeholder="形容词（修饰）：例如 红色陶瓷、带金色花纹"><button id="generate-btn">生成图片</button></div>
       <button id="generate-3d-btn" class="secondary hidden">基于图片生成 3D 模型</button>
       <div id="status-bar" class="status-bar">就绪</div>
     </section>
@@ -42,7 +42,7 @@
       <section class="section"><h2 class="section-title">生成的图片</h2><div class="image-display"><div id="image-loading" class="loading hidden"><div class="spinner"></div><span>正在生成图片…</span></div><img id="generated-image" class="hidden" alt="生成的图片"></div></section>
       <section class="section"><h2 class="section-title">3D 模型展示</h2><div class="model-display"><canvas id="model-canvas"></canvas><div id="model-loading" class="loading hidden"><div class="spinner"></div><span>正在生成或加载模型…</span></div></div><a id="download-model" class="download hidden" target="_blank" rel="noopener">下载模型文件</a></section>
     </div>
-    <section class="instructions"><h3>使用说明</h3><ol><li>输入物体描述并点击“生成图片”。</li><li>图片生成完成后，点击“基于图片生成 3D 模型”。</li><li>在 3D 区域拖拽旋转、滚轮缩放，也可以下载模型文件。</li></ol></section>
+    <section class="instructions"><h3>使用说明</h3><ol><li>输入主体（物体）和形容词（修饰），点击“生成图片”。</li><li>图片生成完成后，点击“基于图片生成 3D 模型”。</li><li>在 3D 区域拖拽旋转、滚轮缩放，也可以下载模型文件。</li></ol></section>
   </main>
   <script>
     const API_BASE = '';
@@ -70,14 +70,14 @@
       }, undefined, err => { setLoading('model-loading', false); setStatus(`模型加载失败：${err.message || err}`); });
     }
     async function generateImage() {
-      const prompt = $('description-input').value.trim(); if (!prompt) return setStatus('请输入物体描述'); userPrompt = prompt; $('generate-btn').disabled = true; setLoading('image-loading', true); setStatus('正在生成图片…');
-      try { const res = await fetch(`${API_BASE}/api/generate-image`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})}); const data = await res.json(); if (!res.ok) throw new Error(data.error || '请求失败'); generatedImageUrl = data.url; const img = $('generated-image'); img.onload = () => { img.classList.remove('hidden'); setLoading('image-loading', false); $('generate-3d-btn').classList.remove('hidden'); setStatus('图片生成完成，可以继续生成 3D 模型'); }; img.onerror = () => { setLoading('image-loading', false); setStatus('图片地址无法加载'); }; img.src = generatedImageUrl; } catch (e) { setLoading('image-loading', false); setStatus(`图片生成失败：${e.message}`); } finally { $('generate-btn').disabled = false; }
+      const subject = $('subject-input').value.trim(); const adjective = $('adjective-input').value.trim(); if (!subject) return setStatus('请输入主体（物体）描述'); userPrompt = [subject, adjective].filter(Boolean).join('，'); $('generate-btn').disabled = true; setLoading('image-loading', true); setStatus('正在生成图片…');
+      try { const res = await fetch(`${API_BASE}/api/generate-image`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subject, adjective})}); const data = await res.json(); if (!res.ok) throw new Error(data.error || '请求失败'); generatedImageUrl = data.url; const img = $('generated-image'); img.onload = () => { img.classList.remove('hidden'); setLoading('image-loading', false); $('generate-3d-btn').classList.remove('hidden'); setStatus('图片生成完成，可以继续生成 3D 模型'); }; img.onerror = () => { setLoading('image-loading', false); setStatus('图片地址无法加载'); }; img.src = generatedImageUrl; } catch (e) { setLoading('image-loading', false); setStatus(`图片生成失败：${e.message}`); } finally { $('generate-btn').disabled = false; }
     }
     async function generate3D() {
       if (!generatedImageUrl) return setStatus('请先生成图片'); $('generate-3d-btn').disabled = true; setLoading('model-loading', true); setStatus('正在本地生成 3D 模型…');
       try { const res = await fetch(`${API_BASE}/api/generate-3d`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:userPrompt,image_url:generatedImageUrl})}); const data = await res.json(); if (!res.ok) throw new Error(data.error || '请求失败'); loadModel(data.model_url); } catch (e) { setLoading('model-loading', false); setStatus(`3D 生成失败：${e.message}`); } finally { $('generate-3d-btn').disabled = false; }
     }
-    $('generate-btn').addEventListener('click', generateImage); $('generate-3d-btn').addEventListener('click', generate3D); $('description-input').addEventListener('keydown', e => { if (e.key === 'Enter') generateImage(); });
+    $('generate-btn').addEventListener('click', generateImage); $('generate-3d-btn').addEventListener('click', generate3D); ['subject-input', 'adjective-input'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') generateImage(); }));
     addEventListener('resize', () => { if (!renderer) return; const c=$('model-canvas'); camera.aspect=c.clientWidth/c.clientHeight; camera.updateProjectionMatrix(); renderer.setSize(c.clientWidth,c.clientHeight,false); });
     addEventListener('load', initScene);
   </script>
