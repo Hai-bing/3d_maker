@@ -336,3 +336,24 @@ Flask 通过 `subprocess.run` 调用系统 Python 执行 `hunyuan3d_gen.py`，�
 - `hunyuan3d_gen.py` 在导出 GLB 后，用同一 trimesh mesh 追加导出同名 `.stl`（纯几何，不含纹理，供 3D 打印/切割）。
 - `app.py` 的 `/api/generate-3d` 检测同名 `.stl` 是否存在，返回值新增 `stl_url`。
 - 前端 3D 展示区新增「下载 STL 文件」链接（带 `download` 属性，点击直接保存到本地）。
+
+## 21. 2026-08-18：修复中文提示词语义错乱（椅子生成摩托车）
+
+### 21.1 现象与根因
+- 现象：输入「椅子」生成「摩托车」；同类问题历史上出现过（见第 15 节「椅子生成茶壶」），修好后过几天又复发。
+- 根因：`_translate_to_english()` 依赖 MyMemory 免费翻译 API，该 API 不稳定（限流/超时/拼错）。翻译失败时代码 `except` 静默返回中文原文，中文直接喂给 SDXL 的英文 CLIP（对中文理解差），导致语义错乱。API 可用性每天波动，故「过几天又复发」。
+
+### 21.2 修复：离线词典优先 + 失败明确抛错
+- 新增 `platform/backend/zh_en_dict.py`：内置 200+ 条 3D 生成常见词汇的中英离线词典（物体/颜色/材质/风格），长词优先匹配，英文词自动补空格避免粘连。
+- 改造 `app.py` 的 `_translate_to_english()` 为三级策略：
+  1. 本地离线词典优先（确定、离线、不受外部影响）；
+  2. 词典未覆盖的词尝试 MyMemory 兜底；
+  3. 兜底也失败时明确抛错，**绝不静默喂中文给 CLIP**。
+
+### 21.3 验证
+- 本地词典翻译正确：`椅子→chair`、`摩托车→motorcycle`、`一只红色陶瓷花瓶，带金色花纹→a red ceramic vase with golden pattern`。
+- 英文输入原样返回。`app.py` / `zh_en_dict.py` 编译通过。
+
+### 21.4 遗留项（后续可选）
+- 词典覆盖率有限：超纲词仍依赖 MyMemory，失败时报错而非错乱，但非 100% 离线。彻底方案是接入本地翻译模型（如 Helsinki-NLP opus-mt-zh-en）。
+- seed 仍每次随机（时间戳），同一提示词结果会漂移；如需稳定复现可加固定 seed 功能。
