@@ -357,3 +357,25 @@ Flask 通过 `subprocess.run` 调用系统 Python 执行 `hunyuan3d_gen.py`，�
 ### 21.4 遗留项（后续可选）
 - 词典覆盖率有限：超纲词仍依赖 MyMemory，失败时报错而非错乱，但非 100% 离线。彻底方案是接入本地翻译模型（如 Helsinki-NLP opus-mt-zh-en）。
 - seed 仍每次随机（时间戳），同一提示词结果会漂移；如需稳定复现可加固定 seed 功能。
+
+## 22. 2026-08-18：接入本地离线翻译模型（彻底移除外部翻译 API）
+
+### 22.1 背景
+- 第 21 节修复中，超纲词仍依赖 MyMemory 兜底，未达 100% 离线。为彻底消除外部翻译 API 波动带来的语义错乱，接入本地翻译模型。
+
+### 22.2 实现
+- 新增 `platform/backend/local_translator.py`：CPU 懒加载 `Helsinki-NLP/opus-mt-zh-en`，线程安全，短文本翻译延迟可忽略。
+- 模型权重放 `platform/backend/models/opus-mt-zh-en/`（约 555MB），由 `pytorch_model.bin` 转换为 `safetensors`（解决共享权重 + transformers 5.x 对 torch<2.6 的 torch.load 限制）。
+- 翻译链路改为三级：本地词典 → 本地翻译模型 → 明确报错；彻底移除 MyMemory 及 `urllib.parse` 依赖。
+- `requirements.txt` 新增 `sentencepiece`、`sacremoses`、`safetensors`，移除已不用的 `deep-translator`。
+- `.gitignore` 排除 `platform/backend/models/`（大文件不入库）。
+- `README.md` 新增第 7 节「本地翻译模型」部署说明（含下载与 safetensors 转换命令）。
+
+### 22.3 验证
+- 词典覆盖词走词典：`椅子→chair`、`摩托车→motorcycle`、`红色陶瓷花瓶→red ceramic vase`。
+- 超纲词走本地模型：`哥特式烛台→Goth candlestick`、`蒸汽朋克齿轮→Steam punk gear`。
+- 英文输入原样返回。`app.py` / `local_translator.py` / `zh_en_dict.py` 编译通过。
+
+### 22.4 说明
+- 翻译模型 CPU 推理，不占 GPU 显存，与 ComfyUI/Hunyuan3D 无冲突。
+- 模型权重未入库，其他机器部署需按 README 第 7 节重新下载转换。

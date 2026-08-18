@@ -12,4 +12,6 @@ rembg
 huggingface-hub
 xatlas==0.0.9
 onnxruntime
-deep-translator
+sentencepiece>=0.2
+sacremoses>=0.1
+safetensors>=0.4

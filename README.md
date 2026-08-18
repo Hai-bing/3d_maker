@@ -87,3 +87,31 @@ TripoSR 前向推理 → Marching Cubes 提取 Mesh
 ```
 
 模型默认使用 `stabilityai/TripoSR`，在 CUDA GPU 上推理，通常几秒到十几秒即可完成。
+
+## 7. 本地翻译模型（离线中译英）
+
+中文提示词通过本地 `Helsinki-NLP/opus-mt-zh-en` 模型离线翻译，不依赖任何外部翻译 API，
+避免网络波动导致语义错乱（如「椅子」生成「摩托车」）。
+
+模型权重未入库（约 555MB），首次部署需手动下载到 `platform/backend/models/opus-mt-zh-en/`：
+
+```bash
+cd platform/backend/models
+mkdir -p opus-mt-zh-en && cd opus-mt-zh-en
+# 通过国内镜像下载（国内环境推荐；海外可把 hf-mirror.com 换成 huggingface.co）
+BASE="https://hf-mirror.com/Helsinki-NLP/opus-mt-zh-en/resolve/main"
+for f in config.json generation_config.json tokenizer_config.json vocab.json source.spm target.spm pytorch_model.bin; do
+  curl -sL "$BASE/$f" -o "$f"
+done
+```
+
+原模型是旧格式 `pytorch_model.bin`，需转成 `safetensors` 才能被新版 transformers + torch<2.6 安全加载：
+
+```bash
+cd platform/backend
+seed3D_env\Scripts\python.exe -c "import torch; from safetensors.torch import save_file; s=torch.load('models/opus-mt-zh-en/pytorch_model.bin', map_location='cpu', weights_only=True); save_file({k:v.clone() for k,v in s.items()}, 'models/opus-mt-zh-en/model.safetensors')"
+rm models/opus-mt-zh-en/pytorch_model.bin
+```
+
+下载并转换完成后，`models/opus-mt-zh-en/` 下应包含：`config.json`、`model.safetensors`、`source.spm`、`target.spm`、`vocab.json`、`tokenizer_config.json`、`generation_config.json`。
+

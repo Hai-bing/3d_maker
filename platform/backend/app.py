@@ -13,7 +13,6 @@ import shutil
 import subprocess
 
 import httpx
-import urllib.parse
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
@@ -59,39 +58,31 @@ import re
 def _translate_to_english(text: str) -> str:
     """中文提示词转英文。
 
-    优先走本地离线词典（确定、稳定），未覆盖的词再尝试 MyMemory 兜底；
-    兜底也失败时抛错，绝不把中文原文静默喂给 SDXL 的英文 CLIP
-    （否则会因 CLIP 不懂中文而产生语义错乱，如「椅子」生成「摩托车」）。
+    优先走本地离线词典（确定、最快），词典未覆盖的词交给本地翻译模型
+    （Helsinki opus-mt，完全离线）；本地模型也失败时才抛错。
+    绝不把中文原文静默喂给 SDXL 的英文 CLIP（否则会因 CLIP 不懂中文
+    而产生语义错乱，如「椅子」生成「摩托车」）。
     """
     from zh_en_dict import translate_zh_to_en
 
     if not re.search(r'[一-鿿]', text):
         return text
 
-    # 1) 本地词典优先
+    # 1) 本地词典优先（快、确定）
     dict_translated = translate_zh_to_en(text)
     if not re.search(r'[一-鿿]', dict_translated):
-        # 词典已完全覆盖，无残留中文
         logging.info("Dict translated prompt: %s -> %s", text, dict_translated)
         return dict_translated
 
-    # 2) 残留中文，尝试 MyMemory 兜底
+    # 2) 残留中文（词典未覆盖），交给本地翻译模型
     try:
-        encoded = urllib.parse.quote(text)
-        url = f"https://api.mymemory.translated.net/get?q={encoded}&langpair=zh-CN%7Cen"
-        response = httpx.get(url, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        translated = data.get("responseData", {}).get("translatedText", "")
-        if translated:
-            # 去掉 MyMemory 加的冠词 (a/an)，避免干扰 CLIP 权重语法
-            translated = re.sub(r'^(an?)\s+', '', translated)
-            logging.info("MyMemory translated prompt: %s -> %s", text, translated)
-            return translated
-        raise RuntimeError("empty translation")
+        from local_translator import translate_zh_to_en as local_translate
+        result = local_translate(text)
+        logging.info("Local model translated prompt: %s -> %s", text, result)
+        return result
     except Exception as exc:
-        # 3) 兜底也失败：明确抛错，拒绝用中文喂 CLIP
-        logging.error("Translation failed for: %s (%s)", text, exc)
+        # 3) 本地模型也失败：明确抛错，拒绝用中文喂 CLIP
+        logging.error("Local translation failed for: %s (%s)", text, exc)
         raise RuntimeError(
             f"提示词翻译失败，请改用英文输入或换个说法：{text}"
         ) from exc

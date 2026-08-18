@@ -19,6 +19,8 @@ env/
 
 # ── 生成产物（模型 / 图片输出）───────────────────────────
 platform/backend/static/generated/
+# 本地翻译模型权重（大文件，不入库，需按 README 手动下载）
+platform/backend/models/
 
 # ── IDE / 编辑器 ─────────────────────────────────────────
 .idea/
