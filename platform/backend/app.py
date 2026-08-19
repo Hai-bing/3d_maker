@@ -102,6 +102,13 @@ def _comfy_workflow(subject: str, adjective: str, seed: int) -> dict[str, dict[s
     adjective_en = _translate_to_english(adjective).strip() if adjective else ""
     adjective_part = f", ({adjective_en}:1.1)" if adjective_en else ""
 
+    # 检测是否为「拟人 / 角色 / 动作」类请求：
+    # 这类需求需要人物特征（脸、手、脚），不能用压制人物的负向词，
+    # 否则会把「拟人香蕉」强行拉回「普通香蕉」。
+    character_hint = ("anthropomorphic", "character", "dancing", "cartoon",
+                      "anime", "figurine", "mascot", "smiling", "cute")
+    is_character = any(k in adjective_en.lower() for k in character_hint)
+
     # 不放否定语在正向 prompt 中；去掉 "studio product photography"
     # — 对小物件有偏见，大型/复杂物体生成不准
     positive = (
@@ -110,12 +117,20 @@ def _comfy_workflow(subject: str, adjective: str, seed: int) -> dict[str, dict[s
         "clean background, high detail, "
         f"uid:{seed}"   # 防止 ComfyUI 缓存复用（每次 seed 不同，hash 不同）
     )
-    negative = (
-        "text, watermark, logo, signature, letters, numbers, "
-        "people, hands, fingers, faces, "
-        "multiple objects, clutter, messy, crowded, "
-        "cropped, blurry, low quality, deformed, distorted, ugly"
-    )
+    # 拟人/角色请求：保留通用质量负向词，但移除压制人物的词（people/faces/hands/fingers）
+    if is_character:
+        negative = (
+            "text, watermark, logo, signature, letters, numbers, "
+            "multiple objects, clutter, messy, crowded, "
+            "cropped, blurry, low quality, deformed, distorted, ugly"
+        )
+    else:
+        negative = (
+            "text, watermark, logo, signature, letters, numbers, "
+            "people, hands, fingers, faces, "
+            "multiple objects, clutter, messy, crowded, "
+            "cropped, blurry, low quality, deformed, distorted, ugly"
+        )
     # DPM++ 2M Karras 对 SDXL 语义遵循度更好
     return {
         "4": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": COMFYUI_CHECKPOINT}},

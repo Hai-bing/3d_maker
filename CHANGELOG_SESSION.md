@@ -379,3 +379,34 @@ Flask 通过 `subprocess.run` 调用系统 Python 执行 `hunyuan3d_gen.py`，�
 ### 22.4 说明
 - 翻译模型 CPU 推理，不占 GPU 显存，与 ComfyUI/Hunyuan3D 无冲突。
 - 模型权重未入库，其他机器部署需按 README 第 7 节重新下载转换。
+
+## 23. 2026-08-19：拟人/动作词典扩充、动态负向词、3D 渲染材质优化
+
+### 23.1 修复：拟人/动作类提示词翻译错误
+- 现象：输入「香蕉 + 3d拟人，跳舞着」生成的是普通现实香蕉，原因有二：
+  1. 词典未覆盖「拟人」「跳舞」，opus-mt 将其错译（「拟人」→ `proposer`，「跳舞着」→ `♪ Dancing ♪`）；
+  2. 负向提示词包含 `people, hands, fingers, faces`，主动压制了拟人所需的人物特征。
+- `zh_en_dict.py` 新增拟人/动漫/动作/水果等词条：`3d拟人→3D anthropomorphic`、`跳舞着→dancing`、`卡通风格→cartoon style`、`香蕉→banana` 等约 30 条。
+
+### 23.2 修复：动态负向提示词（拟人请求自动移除人物压制词）
+- `app.py` 的 `_comfy_workflow()` 检测形容词是否含拟人/角色/动作关键词（`anthropomorphic`、`dancing`、`cartoon`、`anime` 等）。
+- 普通物体请求：负向词保留 `people, hands, fingers, faces`（避免生成人物）。
+- 拟人/角色请求：自动移除上述压制词，允许模型生成人物特征，正确表达「拟人香蕉」效果。
+
+### 23.3 优化：3D 模型渲染材质均匀化
+- 根因：当前 `HUNYUAN3D_TEX=false`，输出纯几何白模（顶点颜色均匀灰 102），明暗不均来自前端单一强方向光，而非原图阴影扩散。
+- `test.html` 光照改为四灯组合：`AmbientLight(0.65)` 打底 + `HemisphereLight(0.6)` 过渡 + 主方向光 `(0.55)` + 背面补光 `(0.25)`，消除死黑面。
+- 新增 `normalizeMaterial()` 函数：加载模型后统一设 `roughness=0.85`、`metalness=0.05`；对无纹理白模同时禁用顶点颜色并设统一浅灰白色 `0xd5d9de`，呈现柔和均匀哑光质感。
+
+## 24. 2026-08-19：PPT 新增 2D/3D 原理页
+
+### 24.1 内容
+- 在 `3D_Maker_项目汇报.pptx` 第 3 页（系统架构）之后插入两页原理介绍：
+  - 第 4 页「2D 生成原理」：4 卡片流程 — 中文提示词（本地离线翻译）→ CLIP 编码（权重语法）→ 扩散去噪（1024×1024 / 30 步 DPM++ 2M）→ VAE 解码（PNG）
+  - 第 5 页「3D 生成原理」：4 卡片流程 — 参考图（RGB）→ 去背景（rembg）→ 形状生成（Hunyuan3D-DiT / Flow Matching）→ 纹理+导出（GLB/OBJ/STL）
+- 全文共 11 页，封面/末页无页码，中间页 02–10 连续重排。
+
+### 24.2 技术实现
+- 生成脚本：`.ppt_build/add_principle_slides.py`（python-pptx 1.0.2）。
+- 版式完全复刻现有风格：微软雅黑、蓝色 kicker `#2E90FA`、深灰标题 `#101828`、灰色正文 `#667085`、浅蓝/白卡片交替、底部深色要点条。
+- PPT 文件不入 git（二进制大文件）；原文件备份为 `3D_Maker_项目汇报.backup.pptx`。

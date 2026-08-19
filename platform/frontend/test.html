@@ -57,14 +57,20 @@
       scene = new THREE.Scene(); scene.background = new THREE.Color(0x111827);
       camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, .01, 1000); camera.position.set(0, 0, 4);
       renderer = new THREE.WebGLRenderer({ canvas, antialias:true }); renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
-      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 1.2)); const light = new THREE.DirectionalLight(0xffffff, 1.2); light.position.set(4,6,5); scene.add(light);
+      // 均匀光照：环境光打底消除死黑，半球光补充顶部/地面过渡，方向光降低强度只保留立体感
+      scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x55606e, 0.6));
+      const light = new THREE.DirectionalLight(0xffffff, 0.55); light.position.set(4,6,5); scene.add(light);
+      const fill = new THREE.DirectionalLight(0xffffff, 0.25); fill.position.set(-4,-2,-3); scene.add(fill);
       controls = new THREE.OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
       const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1.2, 1), new THREE.MeshStandardMaterial({color:0x4caf50, metalness:.5, roughness:.3})); scene.add(mesh); currentModel = mesh;
       (function animate(){ requestAnimationFrame(animate); controls.update(); if (currentModel === mesh) mesh.rotation.y += .005; renderer.render(scene,camera); })();
     }
     function disposeObject(obj) { obj.traverse?.(node => { if (node.isMesh) { node.geometry?.dispose(); const mats = Array.isArray(node.material) ? node.material : [node.material]; mats.forEach(m => { m?.map?.dispose(); m?.dispose(); }); } }); }
+    function normalizeMaterial(obj) { obj.traverse?.(node => { if (node.isMesh && node.material) { const mats = Array.isArray(node.material) ? node.material : [node.material]; mats.forEach(m => { m.roughness = 0.85; m.metalness = 0.05; if (!m.map) { m.vertexColors = false; m.color.set(0xd5d9de); } m.needsUpdate = true; }); } }); }
     function loadModel(url, stlUrl) {
       const isObj = /\.obj(?:\?|$)/i.test(url); const loader = isObj ? new THREE.OBJLoader() : new THREE.GLTFLoader(); loader.load(url, loaded => { if (currentModel) { scene.remove(currentModel); disposeObject(currentModel); } currentModel = isObj ? loaded : loaded.scene;
+        normalizeMaterial(currentModel);
         const box = new THREE.Box3().setFromObject(currentModel), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3()); const max = Math.max(size.x,size.y,size.z) || 1;
         currentModel.position.sub(center); currentModel.scale.setScalar(2.4 / max); scene.add(currentModel); $('download-model').href = url; $('download-model').classList.remove('hidden'); if (stlUrl) { $('download-stl').href = stlUrl; $('download-stl').classList.remove('hidden'); } setLoading('model-loading', false); setStatus('3D 模型生成并加载完成');
       }, undefined, err => { setLoading('model-loading', false); setStatus(`模型加载失败：${err.message || err}`); });

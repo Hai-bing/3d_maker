@@ -104,6 +104,17 @@ DICT = {
     "仙人掌": "cactus",
     "玫瑰": "rose",
     "向日葵": "sunflower",
+    "香蕉": "banana",
+    "苹果": "apple",
+    "橙子": "orange",
+    "橘子": "orange",
+    "柠檬": "lemon",
+    "西瓜": "watermelon",
+    "草莓": "strawberry",
+    "葡萄": "grape",
+    "樱桃": "cherry",
+    "梨": "pear",
+    "桃子": "peach",
 
     # ── 建筑 / 结构 ──
     "房子": "house",
@@ -196,6 +207,36 @@ DICT = {
     "一只": "a",
     "一对": "a pair of",
     "一盏": "a",
+
+    # ── 拟人 / 动漫风格（形容词） ──
+    "3d拟人": "3D anthropomorphic",
+    "3d卡通": "3D cartoon",
+    "拟人": "anthropomorphic",
+    "拟人化": "anthropomorphized",
+    "动漫风格": "anime style",
+    "动漫": "anime",
+    "二次元": "anime",
+    "皮克斯风格": "Pixar style",
+    "迪士尼风格": "Disney style",
+    "卡通风格": "cartoon style",
+    "粘土风格": "claymation style",
+    "手办风格": "figurine style",
+
+    # ── 动作 / 姿态（形容词） ──
+    "跳舞着": "dancing",
+    "跳舞": "dancing",
+    "跳舞中": "dancing",
+    "跳舞的": "dancing",
+    "跳舞者": "dancer",
+    "站立": "standing",
+    "坐着": "sitting",
+    "奔跑": "running",
+    "跳跃": "jumping",
+    "飞翔": "flying",
+    "微笑": "smiling",
+    "挥手": "waving",
+    "唱歌": "singing",
+    "跳舞姿势": "dancing pose",
 }
 
 
